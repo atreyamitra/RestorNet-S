@@ -1,8 +1,7 @@
+# Tested with: Python 3.11, torch 2.14 (CPU), numpy, opencv-python-headless 4.x, scikit-image 0.2x
 torch>=2.2.0
-torchvision>=0.17.0
 numpy>=1.24.0
-opencv-python>=4.8.0
+opencv-python-headless>=4.8.0
 scikit-image>=0.22.0
-lpips>=0.1.4
 Pillow>=10.0.0
 tqdm>=4.66.0

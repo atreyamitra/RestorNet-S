@@ -1,23 +1,17 @@
 """
 Dataset utilities.
 
-The official KLA inspection-image dataset had not been released at the time
-this project was built (see the pitch deck, slide 7). Two data sources are
-supported so the exact same training/inference code works before and after
-the real dataset drops:
+No real inspection images are used anywhere in this repository. Two sources:
 
-    1. `FolderDataset`     -- loads real grayscale images from a directory
-                              (use this once the KLA dataset is available).
-    2. `SyntheticChipDataset` -- procedurally generates periodic,
-                              semiconductor-like patterns (repeating
-                              column/row structures similar to DRAM arrays
-                              and FinFET fins) so the pipeline, training
-                              loop, and evaluation script are fully runnable
-                              and testable right now.
+    1. `SyntheticChipDataset` -- procedurally generates grayscale images with
+       periodic grids / stripes / diagonal patterns and a few blob "defects".
+       This is the only data the shipped checkpoint was trained and evaluated on.
+    2. `FolderDataset` -- loads grayscale images from a directory (untested on
+       real inspection data; included so the pipeline can be pointed at it).
 
-Both datasets return ground-truth crops; the physics-based degradation in
-`degradation.py` is applied on the fly to build (degraded, ground_truth)
-training pairs.
+Both return (degraded, ground_truth); degradation (degradation.py) is applied
+on the fly. `SyntheticChipDataset` is *stateful*: with a fixed seed the
+sequence of items is reproducible, but ds[i] depends on call order.
 """
 from __future__ import annotations
 
@@ -64,7 +58,7 @@ def list_images(folder: str) -> list[str]:
 
 
 class FolderDataset(Dataset):
-    """Loads ground-truth crops from a real folder of inspection images."""
+    """Loads ground-truth crops from a folder of images."""
 
     def __init__(
         self,
@@ -116,11 +110,11 @@ class SyntheticChipDataset(Dataset):
     Procedurally generates grayscale patterns that mimic the *structural*
     properties relevant to this task -- repeating periodic columns/rows
     (DRAM-like arrays), dense parallel fins (FinFET-like), and isolated
-    defect blobs -- without using any real, proprietary inspection data.
+    defect blobs -- no real inspection data is used.
 
     This exists purely so the training/inference/evaluation pipeline is
     demonstrably runnable end-to-end. Swap in `FolderDataset` pointed at
-    the real KLA dataset for production results.
+    a real dataset (not validated here).
     """
 
     def __init__(
@@ -189,3 +183,15 @@ class SyntheticChipDataset(Dataset):
             rng=self.rng,
         )
         return lr, gt
+
+
+def seed_worker(worker_id: int) -> None:
+    """DataLoader worker_init_fn: give each worker (and each epoch) its own RNG.
+
+    Without this, every worker gets a copy of the dataset's RNG in the same state,
+    so workers emit duplicate samples and every epoch repeats the same samples.
+    """
+    info = torch.utils.data.get_worker_info()
+    ds = info.dataset
+    if hasattr(ds, "rng"):
+        ds.rng = np.random.default_rng(torch.initial_seed() % 2**32)

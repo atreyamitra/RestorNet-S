@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Run RestorNet-S inference on a folder of degraded inspection images.
+Run RestorNet-S inference on a folder of degraded grayscale images.
 
 Usage
 -----
@@ -29,7 +29,7 @@ import torch
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from restornet.model import build_model
+from restornet.model import load_checkpoint
 from restornet.dataset import list_images, load_grayscale
 
 try:
@@ -48,18 +48,6 @@ def parse_args():
                     help="If >0, run inference in tiles of this size (for large images / low memory)")
     p.add_argument("--tile-overlap", type=int, default=16)
     return p.parse_args()
-
-
-def load_model(weights_path: str, device: str):
-    ckpt = torch.load(weights_path, map_location=device)
-    model = build_model(
-        scale=ckpt.get("scale", 2),
-        base_channels=ckpt.get("base_channels", 48),
-        n_rdb=ckpt.get("n_rdb", 6),
-    )
-    model.load_state_dict(ckpt["model_state_dict"])
-    model.to(device).eval()
-    return model, ckpt.get("scale", 2)
 
 
 def save_image(path: str, arr: np.ndarray):
@@ -105,7 +93,11 @@ def main():
     args = parse_args()
     os.makedirs(args.output, exist_ok=True)
 
-    model, scale = load_model(args.weights, args.device)
+    if not os.path.isfile(args.weights):
+        sys.exit(f"error: checkpoint not found: {args.weights}")
+    if not os.path.isdir(args.input):
+        sys.exit(f"error: input folder not found: {args.input}")
+    model, scale = load_checkpoint(args.weights, args.device)
     paths = list_images(args.input)
     if not paths:
         print(f"No images found in {args.input}")

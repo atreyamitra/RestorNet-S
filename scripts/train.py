@@ -4,12 +4,13 @@ Train RestorNet-S.
 
 Reproduces the training run used to produce the checkpoint shipped in
 weights/. Works out of the box on the built-in synthetic dataset (no real
-data required); point --data-dir at a folder of real inspection images
-(and pass --dataset folder) once the KLA dataset is available.
+data required); point --data-dir at a folder of real images (untested)
+(and pass --dataset folder) for real images (untested).
 
 Examples
 --------
-# Quick run on synthetic data (what produced weights/restornet_s_final.pth)
+# Quick run on synthetic data (the shipped checkpoint came from an earlier version
+# of this script, before the DataLoader-worker seeding fix -- see README)
 python scripts/train.py --dataset synthetic --epochs 30 --steps-per-epoch 40 \
     --batch-size 8 --patch-size 96 --scale 2 --out weights/restornet_s_final.pth
 
@@ -33,7 +34,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from restornet.model import build_model
 from restornet.losses import HybridLoss
-from restornet.dataset import FolderDataset, SyntheticChipDataset
+from restornet.dataset import FolderDataset, SyntheticChipDataset, seed_worker
 
 
 def parse_args():
@@ -93,12 +94,18 @@ def main():
     train_loader = DataLoader(
         train_ds, batch_size=args.batch_size, shuffle=True,
         num_workers=args.num_workers, drop_last=True,
+        worker_init_fn=seed_worker,  # otherwise every worker/epoch repeats the same samples
     )
 
     val_loader = None
     if args.dataset == "folder" and args.val_dir:
         val_ds = build_dataset(args, train=False)
         val_loader = DataLoader(val_ds, batch_size=1, shuffle=False)
+    elif args.dataset == "synthetic":
+        # Fixed synthetic validation set (different seed from training), built once.
+        val_ds = build_dataset(args, train=False)
+        val_ds.length = 32
+        val_loader = DataLoader([val_ds[i] for i in range(32)], batch_size=8, shuffle=False)
 
     model = build_model(
         scale=args.scale, base_channels=args.base_channels, n_rdb=args.n_rdb
@@ -173,8 +180,10 @@ def main():
         print(msg)
         history.append({"epoch": epoch, **running})
 
-        if running["total"] < best_loss:
-            best_loss = running["total"]
+        # Select the checkpoint on validation loss when a validation set exists.
+        score = running.get("val_loss", running["total"])
+        if score < best_loss:
+            best_loss = score
             torch.save(
                 {
                     "model_state_dict": model.state_dict(),

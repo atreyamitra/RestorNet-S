@@ -1,15 +1,11 @@
 """
-Physics-matched degradation engine.
+Synthetic degradation (a simple model, NOT calibrated against any real sensor):
+    1. Multiplicative speckle noise: I + I*N(0, 0.15^2)
+    2. Additive Gaussian noise: N(0, 0.02^2)
+    3. Bicubic downsampling by `scale` (torch, align_corners=False)
+    4. Clamp to [0, 1]
 
-Simulates the real inspection-image degradation pipeline described in the
-problem statement:
-    1. Multiplicative Speckle noise (grainy, can push pixels out of the
-       original [0, 1] intensity range).
-    2. Additive Gaussian sensor noise.
-    3. Bicubic downsampling (spatial resolution reduction).
-
-Used both for on-the-fly training-pair generation and for building the
-sample degraded/restored/ground-truth comparisons.
+Used for on-the-fly training pairs and for building the evaluation set.
 """
 from __future__ import annotations
 
@@ -55,7 +51,7 @@ def degrade(
     rng: np.random.Generator | None = None,
 ) -> torch.Tensor:
     """
-    Full degradation pipeline matching the problem statement:
+    Full degradation pipeline:
     speckle -> additive Gaussian -> bicubic downsample -> clamp.
 
     Args:
@@ -70,6 +66,7 @@ def degrade(
         clamped to [0, 1].
     """
     if rng is not None:
+        # NOTE: reseeds torch's *global* RNG from `rng` (deterministic, but global).
         torch.manual_seed(int(rng.integers(0, 2**31 - 1)))
 
     noisy = add_speckle_noise(img, speckle_sigma)

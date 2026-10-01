@@ -1,19 +1,19 @@
 """
-RestorNet-S -- Structure-Preserving Joint Denoising & Super-Resolution.
+RestorNet-S -- joint denoising + 2x super-resolution CNN (single channel).
 
-Architecture summary (see README.md for the full design rationale):
-    - Shallow feature extraction (single conv).
-    - A stack of Residual Dense Blocks (RDB) with Channel Attention (CA),
-      inspired by RCAN / SwinIR-style residual-in-residual design.
-    - A lightweight "periodicity" branch: a strided/dilated conv path whose
-      output is added back into the main trunk to help the network preserve
-      repeating device structures (e.g. DRAM columns, FinFET fins) instead
-      of smoothing them away.
-    - Sub-pixel (PixelShuffle) upsampling head that performs the resolution
-      recovery jointly with denoising (single forward pass).
+What is actually implemented (no encoder/decoder, no downsampling path):
+    - Shallow feature extraction (one 3x3 conv) at *input* (low) resolution.
+    - A stack of Residual Dense Blocks (RDB); each RDB ends with
+      squeeze-and-excitation style Channel Attention (CA) and a local skip.
+    - A small dilated-conv residual branch ("periodicity branch") that widens
+      the receptive field without downsampling.
+    - A long skip connection around the trunk (residual-in-residual).
+    - Sub-pixel upsampling head (3x3 conv -> PixelShuffle(2)).
+    - A fixed (non-learned) bicubic upsample of the input is added to the
+      network output, so the trunk learns a correction to bicubic. The output
+      is clamped to [0, 1].
 
-The network operates on single-channel (grayscale) inspection images, as
-specified in the KLA track description.
+Input  : (N, 1, H, W) float in [0, 1].   Output: (N, 1, scale*H, scale*W).
 """
 from __future__ import annotations
 
@@ -69,9 +69,9 @@ class ResidualDenseBlock(nn.Module):
 
 class PeriodicityBranch(nn.Module):
     """
-    Cheap dilated-conv branch that widens the receptive field along
-    periodic structures without extra downsampling, so repeating patterns
-    (DRAM columns / FinFET fins) get reinforced rather than blurred out.
+    Dilated-conv residual branch (dilation 2 and 4) that widens the receptive
+    field without extra downsampling. Intended to help with repeating
+    patterns; no ablation has been run, so its benefit is untested.
     """
 
     def __init__(self, channels: int):
@@ -93,7 +93,7 @@ class RestorNetS(nn.Module):
     Joint denoising + super-resolution network.
 
     Args:
-        in_channels: input channels (1 = grayscale inspection images).
+        in_channels: input channels (1 = grayscale images).
         base_channels: trunk width.
         n_rdb: number of Residual Dense Blocks in the trunk.
         scale: super-resolution upscaling factor (2 or 4).
@@ -108,6 +108,7 @@ class RestorNetS(nn.Module):
     ):
         super().__init__()
         self.scale = scale
+        self.in_channels = in_channels
 
         self.head = nn.Conv2d(in_channels, base_channels, 3, padding=1)
 
@@ -130,12 +131,12 @@ class RestorNetS(nn.Module):
 
         self.tail = nn.Conv2d(base_channels, in_channels, 3, padding=1)
 
-        # Learnable global residual: bicubic-upsampled input is added back
-        # so the network only has to learn the *correction*, which speeds
-        # up convergence and stabilizes training at low sample counts.
-        self.register_buffer("_dummy", torch.zeros(1), persistent=False)
-
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        if x.dim() != 4 or x.shape[1] != self.in_channels:
+            raise ValueError(
+                f"expected input of shape (N, {self.in_channels}, H, W), got {tuple(x.shape)}"
+            )
+        # Fixed (non-learned) global skip: the trunk learns a correction to bicubic.
         base = nn.functional.interpolate(
             x, scale_factor=self.scale, mode="bicubic", align_corners=False
         )
@@ -154,6 +155,19 @@ class RestorNetS(nn.Module):
     @torch.no_grad()
     def count_parameters(self) -> int:
         return sum(p.numel() for p in self.parameters() if p.requires_grad)
+
+
+def load_checkpoint(path: str, device: str = "cpu"):
+    """Load a checkpoint written by scripts/train.py. Returns (model, scale)."""
+    ckpt = torch.load(path, map_location=device)
+    scale = ckpt.get("scale", 2)
+    model = build_model(
+        scale=scale,
+        base_channels=ckpt.get("base_channels", 48),
+        n_rdb=ckpt.get("n_rdb", 6),
+    )
+    model.load_state_dict(ckpt["model_state_dict"])
+    return model.to(device).eval(), scale
 
 
 def build_model(scale: int = 2, base_channels: int = 48, n_rdb: int = 6) -> RestorNetS:

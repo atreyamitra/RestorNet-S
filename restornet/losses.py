@@ -1,6 +1,6 @@
-"""Multi-scale hybrid loss: L1 + MS-SSIM (simplified single/multi-window
-SSIM) + edge-aware (Sobel gradient) loss, as described in the pitch deck's
-"Solution Overview" (slide 3).
+"""Hybrid loss: L1 + multi-scale SSIM (mean of 1-SSIM over a 3-level bilinear
+pyramid; a simplification of MS-SSIM, not the Wang et al. product form) +
+Sobel-gradient L1 edge loss. Defaults: weights 1.0 / 1.0 / 0.5.
 """
 from __future__ import annotations
 
@@ -82,9 +82,7 @@ class EdgeLoss(nn.Module):
 class HybridLoss(nn.Module):
     """
     Weighted sum: L1 + MS-SSIM + edge-aware.
-    (The "frequency consistency" term from the deck is approximated here by
-    the edge/gradient term, which penalizes exactly the high-frequency
-    mismatches that a naive L1/L2 loss tends to blur away.)
+    The edge term penalizes gradient (high-frequency) mismatch.
     """
 
     def __init__(self, w_l1: float = 1.0, w_ssim: float = 1.0, w_edge: float = 0.5):

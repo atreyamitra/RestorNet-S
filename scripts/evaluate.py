@@ -23,8 +23,7 @@ import numpy as np
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from restornet.dataset import list_images, load_grayscale
-from skimage.metrics import structural_similarity as sk_ssim
-from skimage.metrics import peak_signal_noise_ratio as sk_psnr
+from restornet.metrics import psnr_ssim
 
 try:
     import lpips
@@ -85,8 +84,7 @@ def main():
             import cv2
             pred = cv2.resize(pred, (target.shape[1], target.shape[0]), interpolation=cv2.INTER_CUBIC)
 
-        psnr = sk_psnr(target, pred, data_range=1.0)
-        ssim = sk_ssim(target, pred, data_range=1.0)
+        psnr, ssim = psnr_ssim(pred, target)
 
         lp = None
         if use_lpips:

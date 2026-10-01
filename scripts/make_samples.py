@@ -2,7 +2,7 @@
 """
 Regenerate sample_outputs/: a handful of degraded/restored/ground-truth
 triplets plus a side-by-side comparison grid, using the synthetic dataset
-(no real KLA data required).
+(synthetic data only).
 
     python scripts/make_samples.py --weights weights/restornet_s_final.pth
 """
