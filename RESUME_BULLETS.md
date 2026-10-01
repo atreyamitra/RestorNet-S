@@ -2,7 +2,7 @@
 
 **Resume bullets**
 - Built a PyTorch residual-dense-block network (channel attention, PixelShuffle head, bicubic global skip; 868K params) for joint denoising + 2× super-resolution, with a hybrid L1/SSIM/edge loss and CPU inference CLI.
-- Made the evaluation reproducible: deterministic benchmark vs. bicubic on 50 synthetically degraded synthetic images (24.04 vs 20.63 dB PSNR, 0.941 vs 0.884 SSIM), plus pytest suite and GitHub Actions CI; found and fixed a DataLoader RNG bug that duplicated training samples.
+- Made the evaluation reproducible: deterministic benchmark vs. bicubic on 50 synthetically degraded images (24.04 vs 20.63 dB PSNR, 0.941 vs 0.884 SSIM), plus pytest suite and GitHub Actions CI; found and fixed a DataLoader RNG bug that duplicated training samples.
 
 **LinkedIn bullets**
 - Implemented and evaluated a small PyTorch image-restoration model (denoising + 2× super-resolution) against a bicubic baseline on synthetic data, reporting results as synthetic-only.
